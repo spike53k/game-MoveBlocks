@@ -1,128 +1,67 @@
-using UnityEngine;
-using UnityEngine.SceneManagement;
+using UnityEngine;                                   // Импорт основного пространства имён
+using UnityEngine.SceneManagement;                   // Для управления сценами
 
-public class Player : MonoBehaviour
+public class Player : MonoBehaviour                  // Основной класс игрока
 {
-    [SerializeField] KeyCode keyOne;
-    [SerializeField] KeyCode keyTwo;
-    [SerializeField] Vector3 moveDirection;
+    [SerializeField] KeyCode keyOne, keyTwo,         // Клавиши для движения
+                      menuKey = KeyCode.E;           // Клавиша меню (по умолчанию E)
+    [SerializeField] Vector3 moveDirection;          // Направление движения куба
+    [SerializeField] string menuSceneName = "Menu";  // Имя сцены меню
+    [SerializeField] bool enableMenuKey = true;      // Включить меню по клавише?
     
-    // Добавленные переменные для перехода в меню
-    [SerializeField] private string menuSceneName = "MainMenu";
-    [SerializeField] private KeyCode menuKey = KeyCode.E;
-    [SerializeField] private bool enableMenuKey = true;
-    
-    private Rigidbody rb;
-    private bool isResetting = false;
+    private Rigidbody _rb;                           // Физический компонент
+    private bool _isResetting;                       // Защита от двойного рестарта
+    private Activator[] _buttons;                    // Кэш кнопок на уровне
 
-    void Start()
-    {
-        rb = GetComponent<Rigidbody>(); // Кэшируем Rigidbody
-    }
+    void Start() => _rb = GetComponent<Rigidbody>(); // Получаем Rigidbody при старте
 
-    private void FixedUpdate()
+    void FixedUpdate()                               // Физика (50 раз в секунду)
     {
-        if (Input.GetKey(keyOne))
-        {
-            rb.linearVelocity += moveDirection;
-        }
-        if (Input.GetKey(keyTwo))
-        {
-            rb.linearVelocity -= moveDirection;
-        }
+        if (Input.GetKey(keyOne)) _rb.linearVelocity += moveDirection; // Двигаем вперёд
+        if (Input.GetKey(keyTwo)) _rb.linearVelocity -= moveDirection; // Двигаем назад
     }
     
-    private void Update()
+    void Update()                                    // Логика (каждый кадр)
     {
-        // ПЕРЕНОСИМ в Update и используем GetKeyDown
-        if (Input.GetKeyDown(KeyCode.R) && !isResetting)
-        {
-            ResetGame();
-        }
-        
-        // Добавлен переход в меню по нажатию E
-        if (enableMenuKey && Input.GetKeyDown(menuKey))
-        {
-            ReturnToMenu();
-        }
+        if (Input.GetKeyDown(KeyCode.R) && !_isResetting) ResetGame(); // Рестарт по R
+        if (enableMenuKey && Input.GetKeyDown(menuKey)) ReturnToMenu(); // В меню по E
     }
     
-    private void ResetGame()
+    void ResetGame()                                 // Перезагрузка уровня
     {
-        if (isResetting) return;
-        
-        isResetting = true;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        _isResetting = true;                         // Блокируем повторное нажатие
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); // Загружаем сцену заново
     }
     
-    // Добавленный метод для перехода в меню
-    private void ReturnToMenu()
+    void ReturnToMenu()                              // Возврат в главное меню
     {
-        // Проверяем, существует ли сцена меню
-        if (string.IsNullOrEmpty(menuSceneName))
-        {
-            Debug.LogWarning("Menu scene name is not set!");
-            return;
-        }
-        
-        // Проверяем, не находимся ли уже в меню
-        if (SceneManager.GetActiveScene().name == menuSceneName)
-        {
-            Debug.Log("Already in menu scene");
-            return;
-        }
-        
-        // Проверяем, существует ли такая сцена
-        if (!SceneExists(menuSceneName))
-        {
-            Debug.LogError($"Scene '{menuSceneName}' not found in Build Settings!");
-            return;
-        }
-        
-        Debug.Log($"Loading menu: {menuSceneName}");
-        SceneManager.LoadScene(menuSceneName);
-    }
-    
-    // Метод для проверки существования сцены
-    private bool SceneExists(string sceneName)
-    {
-        for (int i = 0; i < SceneManager.sceneCountInBuildSettings; i++)
-        {
-            string scenePath = SceneUtility.GetScenePathByBuildIndex(i);
-            string scene = System.IO.Path.GetFileNameWithoutExtension(scenePath);
-            
-            if (scene == sceneName)
-            {
-                return true;
-            }
-        }
-        return false;
+        if (string.IsNullOrEmpty(menuSceneName)) return; // Проверяем имя сцены
+        SceneManager.LoadScene(menuSceneName);       // Загружаем меню
     }
 
-    private void OnTriggerEnter(Collider other)
+    void OnTriggerEnter(Collider other)              // При входе в триггер
     {
-        if(this.CompareTag("Player") && other.CompareTag("Finish"))
-        {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex + 1);
-        }
-        if(this.CompareTag("Cube") && other.CompareTag("Cube"))
-        {
-            // ОПТИМИЗИРУЕМ медленный FindObjectsOfType
-            foreach(Activator button in FindObjectsByType<Activator>(FindObjectsSortMode.None))
-            {
-                button.CanPush = false;
-            }
-        }
+        if (CompareTag("Player") && other.CompareTag("Finish")) LoadNextLevelOrMenu(); // Финиш
+        if (CompareTag("Cube") && other.CompareTag("Cube")) SetButtons(false); // Куб+куб = блокировка
+    }void OnTriggerExit(Collider other)               // При выходе из триггера
+    {
+        if (CompareTag("Cube") && other.CompareTag("Cube")) SetButtons(true); // Разблокировка
     }
     
-    private void OnTriggerExit(Collider other)
+    void SetButtons(bool state)                      // Управление всеми кнопками
     {
-        if(this.CompareTag("Cube") && other.CompareTag("Cube"))
-        {
-            foreach(Activator button in FindObjectsByType<Activator>(FindObjectsSortMode.None))
-            {
-                button.CanPush = true;
-            }
-        }
+        if (_buttons == null) _buttons = FindObjectsByType<Activator>(FindObjectsSortMode.None); // Кэшируем
+        foreach (var button in _buttons) button.CanPush = state; // Вкл/выкл каждую кнопку
+    }
+
+    void LoadNextLevelOrMenu()                       // Переход на след. уровень или в меню
+    {
+        int current = SceneManager.GetActiveScene().buildIndex; // Текущий индекс сцены
+        if (current + 1 < SceneManager.sceneCountInBuildSettings) // Если есть след. уровень
+            SceneManager.LoadScene(current + 1);     // Загружаем его
+        else if (!string.IsNullOrEmpty(menuSceneName)) // Иначе если задано меню
+            SceneManager.LoadScene(menuSceneName);   // Идём в меню
+        else
+            ResetGame();                             // Или рестартим уровень
     }
 }
